@@ -170,10 +170,13 @@
 
 import sqlite3
 import streamlit as st
+from datetime import datetime
 
 # Connect to the database
 conn = sqlite3.connect("database.db", check_same_thread=False)
 cursor = conn.cursor()
+
+# Create tables if they don't exist
 cursor.execute(
     """
     CREATE TABLE IF NOT EXISTS customer (
@@ -181,6 +184,18 @@ cursor.execute(
         acc TEXT,
         bal INTEGER,
         pin TEXT
+    )
+    """
+)
+
+cursor.execute(
+    """
+    CREATE TABLE IF NOT EXISTS transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        acc TEXT,
+        type TEXT,
+        amount INTEGER,
+        timestamp TEXT
     )
     """
 )
@@ -196,7 +211,8 @@ menu = [
     "Show Employee Details",
     "Deposit Amount",
     "Withdraw Amount",
-    "Delete Employee Details"
+    "Delete Employee Details",
+    "Transaction History"
 ]
 
 choice = st.sidebar.selectbox("Choose an Option", menu)
@@ -224,6 +240,7 @@ elif choice == "Enter New Employee Details":
                 st.error("Balance must be at least 500 🧐")
             else:
                 cursor.execute("INSERT INTO customer VALUES (?, ?, ?, ?)", (name, acc, bal, pin))
+                cursor.execute("INSERT INTO transactions (acc, type, amount, timestamp) VALUES (?, 'Initial Deposit', ?, ?)", (acc, bal, datetime.now().isoformat()))
                 conn.commit()
                 st.success("Employee data inserted into DB ✅")
 
@@ -251,11 +268,13 @@ elif choice == "Deposit Amount":
     pin = st.text_input("Enter PIN", type='password')
     deposit_amount = st.number_input("Enter deposit amount", min_value=1)
     if st.button("Deposit"):
-        db_pin = cursor.execute("SELECT pin FROM customer WHERE pin = ?", (pin,)).fetchone()
-        if db_pin:
+        db_data = cursor.execute("SELECT acc, pin FROM customer WHERE pin = ?", (pin,)).fetchone()
+        if db_data:
+            acc = db_data[0]
             old_bal = cursor.execute("SELECT bal FROM customer WHERE pin = ?", (pin,)).fetchone()[0]
             new_bal = old_bal + deposit_amount
             cursor.execute("UPDATE customer SET bal = ? WHERE pin = ?", (new_bal, pin))
+            cursor.execute("INSERT INTO transactions (acc, type, amount, timestamp) VALUES (?, 'Deposit', ?, ?)", (acc, deposit_amount, datetime.now().isoformat()))
             conn.commit()
             st.success(f"Deposited successfully! New Balance: {new_bal}")
         else:
@@ -267,12 +286,14 @@ elif choice == "Withdraw Amount":
     pin = st.text_input("Enter PIN", type='password')
     withdraw_amount = st.number_input("Enter withdrawal amount", min_value=1)
     if st.button("Withdraw"):
-        db_pin = cursor.execute("SELECT pin FROM customer WHERE pin = ?", (pin,)).fetchone()
-        if db_pin:
+        db_data = cursor.execute("SELECT acc, pin FROM customer WHERE pin = ?", (pin,)).fetchone()
+        if db_data:
+            acc = db_data[0]
             curr_bal = cursor.execute("SELECT bal FROM customer WHERE pin = ?", (pin,)).fetchone()[0]
             if withdraw_amount <= curr_bal:
                 new_bal = curr_bal - withdraw_amount
                 cursor.execute("UPDATE customer SET bal = ? WHERE pin = ?", (new_bal, pin))
+                cursor.execute("INSERT INTO transactions (acc, type, amount, timestamp) VALUES (?, 'Withdraw', ?, ?)", (acc, withdraw_amount, datetime.now().isoformat()))
                 conn.commit()
                 st.success(f"Withdrawal successful! Remaining Balance: {new_bal}")
             else:
@@ -290,7 +311,9 @@ elif choice == "Delete Employee Details":
         if st.button("Delete Employee"):
             result = cursor.execute("SELECT * FROM customer WHERE pin = ?", (pin,)).fetchone()
             if result:
+                acc = result[1]
                 cursor.execute("DELETE FROM customer WHERE pin = ?", (pin,))
+                cursor.execute("INSERT INTO transactions (acc, type, amount, timestamp) VALUES (?, 'Delete Account', 0, ?)", (acc, datetime.now().isoformat()))
                 conn.commit()
                 st.success("Employee record deleted ✅")
             else:
@@ -299,6 +322,7 @@ elif choice == "Delete Employee Details":
     elif option == "All":
         if st.button("Delete All Records"):
             cursor.execute("DELETE FROM customer")
+            cursor.execute("DELETE FROM transactions")
             conn.commit()
             st.success("All records deleted 🗑️✅")
 
