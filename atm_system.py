@@ -301,3 +301,14 @@ elif choice == "Delete Employee Details":
             cursor.execute("DELETE FROM customer")
             conn.commit()
             st.success("All records deleted 🗑️✅")
+
+# Transaction History
+elif choice == "Transaction History":
+    st.subheader("📜 Transaction History")
+    acc_filter = st.text_input("Enter account number to view transactions")
+    if st.button("Show Transactions"):
+        data = cursor.execute("SELECT * FROM transactions WHERE acc = ? ORDER BY timestamp DESC", (acc_filter,)).fetchall()
+        if data:
+            st.table(data)
+        else:
+            st.warning("No transactions found for this account.")
